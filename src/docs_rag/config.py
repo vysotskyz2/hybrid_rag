@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import SecretStr
@@ -20,6 +21,16 @@ class Settings(BaseSettings):
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: SecretStr | None = None
     qdrant_collection: str = "fastapi_docs"
+
+    docs_repo: str = "fastapi/fastapi"
+    docs_ref: str = "68cc4cbb2e0600841b0d6bdd1cc29038b54a00e6"
+    docs_base_url: str = "https://fastapi.tiangolo.com"
+    docs_source_path: str = "docs/en/docs"
+    docs_language: str = "en"
+    data_dir: Path = Path("data")
+    chunk_target_tokens: int = 280
+    chunk_max_tokens: int = 350
+    chunk_overlap_tokens: int = 50
 
     embedding_model: str = "intfloat/multilingual-e5-base"
     embedding_device: str = "cpu"

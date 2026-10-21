@@ -10,6 +10,8 @@ def test_settings_defaults() -> None:
     assert settings.qdrant_url == "http://localhost:6333"
     assert settings.retrieval_top_k == 5
     assert settings.llm_mode == "openrouter"
+    assert settings.docs_ref == "68cc4cbb2e0600841b0d6bdd1cc29038b54a00e6"
+    assert settings.chunk_max_tokens == 350
 
 
 def test_settings_env_override(monkeypatch: pytest.MonkeyPatch) -> None:

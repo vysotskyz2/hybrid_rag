@@ -27,13 +27,29 @@ flowchart LR
 
 ## Компоненты
 
-- **Ingestion** — загрузка Markdown-документации, фильтрация служебных страниц, чанкинг по структуре заголовков.
+- **Ingestion** — загрузка Markdown-документации по pinned commit, фильтрация служебных страниц, очистка frontmatter и HTML, чанкинг по структуре заголовков с сохранением code fences.
 - **Retrieval** — Qdrant с двумя named vectors: dense и sparse.
 - **Fusion** — RRF поверх dense- и BM25-кандидатов.
 - **Reranking** — cross-encoder для финального top-k.
 - **Generation** — ответ только по найденному контексту, с цитатами на разделы документации.
 - **API** — FastAPI с SSE-стримингом.
 - **UI** — Streamlit: чат и сравнение режимов поиска.
+
+## Ingestion
+
+```text
+GitHub tarball @ pinned SHA
+  → docs/en/docs/**/*.md
+  → filter + frontmatter/HTML cleanup
+  → heading-aware sections
+  → block-based chunks (max 350 approx tokens, overlap 50)
+  → data/chunks/chunks.jsonl + stats.json
+```
+
+Каждый чанк хранит `url`, `title`, `heading_path`, `section`, `content_type`,
+`version`, `content_hash` и `token_count`. Это позволит на этапе retrieval
+фильтровать по разделу и строить цитаты без дополнительных запросов.
+
 
 ## Принципы
 
