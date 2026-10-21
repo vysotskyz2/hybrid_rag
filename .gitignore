@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.venv*/
+dist/
+build/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+
+# Test and tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Local corpus and model caches
+data/
+.cache/
+.huggingface/
+qdrant_storage/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
