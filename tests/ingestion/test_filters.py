@@ -1,6 +1,7 @@
 import pytest
 
 from docs_rag.ingestion.filters import is_indexable
+from tests.ingestion.helpers import make_config
 
 
 @pytest.mark.parametrize(
@@ -17,7 +18,7 @@ from docs_rag.ingestion.filters import is_indexable
     ],
 )
 def test_excluded_paths(path: str) -> None:
-    assert not is_indexable(path)
+    assert not is_indexable(path, make_config().filtering)
 
 
 @pytest.mark.parametrize(
@@ -33,8 +34,8 @@ def test_excluded_paths(path: str) -> None:
     ],
 )
 def test_indexable_paths(path: str) -> None:
-    assert is_indexable(path)
+    assert is_indexable(path, make_config().filtering)
 
 
 def test_non_markdown_is_not_indexable() -> None:
-    assert not is_indexable("img/logo.png")
+    assert not is_indexable("img/logo.png", make_config().filtering)

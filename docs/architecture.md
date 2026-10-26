@@ -38,9 +38,10 @@ flowchart LR
 ## Ingestion
 
 ```text
-GitHub tarball @ pinned SHA
-  → docs/en/docs/**/*.md
-  → filter + frontmatter/HTML cleanup
+config/ingestion.toml
+  → GitHub tarball @ pinned SHA
+  → docs/en/docs/**/*.md + docs_src/**
+  → filter + frontmatter/HTML cleanup + include resolution
   → heading-aware sections
   → block-based chunks (max 350 approx tokens, overlap 50)
   → data/chunks/chunks.jsonl + stats.json
@@ -49,6 +50,28 @@ GitHub tarball @ pinned SHA
 Каждый чанк хранит `url`, `title`, `heading_path`, `section`, `content_type`,
 `version`, `content_hash` и `token_count`. Это позволит на этапе retrieval
 фильтровать по разделу и строить цитаты без дополнительных запросов.
+
+## Retrieval
+
+```text
+query (RU/EN)
+  ├─ e5 query embedding ──> dense search ─┐
+  └─ BM25 query vector ───> sparse search ─┤
+                                            ├─ RRF fusion ─> top-k
+                                            └─ filters: section, content_type,
+                                               language, version, path
+```
+
+Qdrant collection:
+
+- `dense`: 768 dim, cosine, `multilingual-e5-base`;
+- `sparse`: BM25 + IDF;
+- point ID = UUID чанка;
+- payload indexes по метаданным.
+
+Индексация идемпотентна: повторный upsert обновляет точки по UUID, а stale points
+удаляются после успешной записи. Полная пересборка — `--recreate`.
+
 
 
 ## Принципы

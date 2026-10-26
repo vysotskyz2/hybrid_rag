@@ -1,0 +1,38 @@
+[corpus]
+repo = "fastapi/fastapi"
+ref = "68cc4cbb2e0600841b0d6bdd1cc29038b54a00e6"
+source_path = "docs/en/docs"
+docs_src_path = "docs_src"
+base_url = "https://fastapi.tiangolo.com"
+language = "en"
+
+[filtering]
+excluded_paths = [
+  "_llm-test.md",
+  "about/index.md",
+  "contributing.md",
+  "external-links.md",
+  "fastapi-people.md",
+  "help-fastapi.md",
+  "learn/index.md",
+  "management.md",
+  "newsletter.md",
+  "release-notes.md",
+  "resources/index.md",
+  "translation-banner.md",
+  "translations.md",
+]
+excluded_dirs = ["img", "css", "js"]
+skip_underscore = true
+
+[chunking]
+max_tokens = 350
+overlap_tokens = 50
+heading_separator = " > "
+code_ratio_threshold = 0.6
+resolve_docs_src = true
+
+[output]
+chunks_dir = "chunks"
+chunks_filename = "chunks.jsonl"
+stats_filename = "stats.json"

@@ -3,7 +3,7 @@ import re
 import uuid
 from dataclasses import dataclass
 
-from docs_rag.config import Settings
+from docs_rag.ingestion.config import ChunkingConfig, IngestionConfig
 from docs_rag.ingestion.models import (
     Block,
     BlockKind,
@@ -90,16 +90,21 @@ def split_blocks(content: str, counter: TokenCounter) -> list[Block]:
     return blocks
 
 
-def chunk_document(doc: DocFile, settings: Settings, counter: TokenCounter) -> list[Chunk]:
+def chunk_document(
+    doc: DocFile,
+    config: IngestionConfig,
+    counter: TokenCounter,
+) -> list[Chunk]:
     parsed = parse_markdown(doc.text)
+    corpus = config.corpus
     context = ChunkContext(
-        project=settings.docs_repo.rsplit("/", 1)[-1],
-        version=settings.docs_ref,
+        project=corpus.project,
+        version=corpus.ref,
         path=doc.relative_path,
         url=doc.url,
         title=parsed.title or doc.title,
         section=doc.section,
-        language=settings.docs_language,
+        language=corpus.language,
     )
 
     chunks: list[Chunk] = []
@@ -110,7 +115,7 @@ def chunk_document(doc: DocFile, settings: Settings, counter: TokenCounter) -> l
             _chunk_section(
                 section=section,
                 context=context,
-                settings=settings,
+                chunking=config.chunking,
                 counter=counter,
                 start_index=len(chunks),
             )
@@ -125,7 +130,7 @@ def _is_sponsor_section(section: Section) -> bool:
 def _chunk_section(
     section: Section,
     context: ChunkContext,
-    settings: Settings,
+    chunking: ChunkingConfig,
     counter: TokenCounter,
     start_index: int,
 ) -> list[Chunk]:
@@ -137,10 +142,10 @@ def _chunk_section(
     if not blocks:
         return []
 
-    header = " > ".join(section.heading_path)
+    header = chunking.heading_separator.join(section.heading_path)
     header_prefix = f"{header}\n\n" if header else ""
-    max_tokens = settings.chunk_max_tokens
-    overlap_tokens = settings.chunk_overlap_tokens
+    max_tokens = chunking.max_tokens
+    overlap_tokens = chunking.overlap_tokens
     max_body_tokens = max(1, max_tokens - counter.count(header_prefix))
 
     def make_chunk(chunk_blocks: list[Block], index: int) -> Chunk:
@@ -159,7 +164,10 @@ def _chunk_section(
             title=context.title,
             heading_path=header,
             section=context.section,
-            content_type=_content_type(chunk_blocks),
+            content_type=_content_type(
+                chunk_blocks,
+                threshold=chunking.code_ratio_threshold,
+            ),
             language=context.language,
             project=context.project,
             version=context.version,
@@ -308,12 +316,12 @@ def _overlap_tail(blocks: list[Block], overlap_tokens: int) -> list[Block]:
     return tail
 
 
-def _content_type(blocks: list[Block]) -> ContentType:
+def _content_type(blocks: list[Block], threshold: float = 0.6) -> ContentType:
     total = sum(block.token_count for block in blocks)
     code_tokens = sum(block.token_count for block in blocks if block.kind == "code")
     if code_tokens == 0:
         return "prose"
-    if total > 0 and code_tokens / total >= 0.6:
+    if total > 0 and code_tokens / total >= threshold:
         return "code"
     return "mixed"
 

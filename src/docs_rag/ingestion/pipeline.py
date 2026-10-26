@@ -4,9 +4,10 @@ from pathlib import Path
 
 import structlog
 
-from docs_rag.config import Settings
 from docs_rag.ingestion.chunker import chunk_document
+from docs_rag.ingestion.config import IngestionConfig
 from docs_rag.ingestion.filters import is_indexable
+from docs_rag.ingestion.includes import resolve_includes
 from docs_rag.ingestion.models import Chunk, DocFile
 from docs_rag.ingestion.tokens import RegexTokenCounter, TokenCounter
 from docs_rag.ingestion.urls import doc_url, section_for_path
@@ -52,21 +53,30 @@ class CorpusStats:
         }
 
 
-def collect_docs(source_dir: Path, base_url: str) -> tuple[list[DocFile], int]:
+def collect_docs(source_dir: Path, config: IngestionConfig) -> tuple[list[DocFile], int]:
+    corpus = config.corpus
     docs: list[DocFile] = []
     skipped = 0
 
     for path in sorted(source_dir.rglob("*.md")):
         relative_path = path.relative_to(source_dir).as_posix()
-        if not is_indexable(relative_path):
+        if not is_indexable(relative_path, config.filtering):
             skipped += 1
             continue
+
+        text = path.read_text(encoding="utf-8")
+        if config.chunking.resolve_docs_src:
+            text = resolve_includes(
+                text,
+                source_dir,
+                docs_src_path=corpus.docs_src_path,
+            )
 
         docs.append(
             DocFile(
                 relative_path=relative_path,
-                text=path.read_text(encoding="utf-8"),
-                url=doc_url(relative_path, base_url),
+                text=text,
+                url=doc_url(relative_path, corpus.base_url),
                 title=Path(relative_path).stem,
                 section=section_for_path(relative_path),
             )
@@ -77,12 +87,12 @@ def collect_docs(source_dir: Path, base_url: str) -> tuple[list[DocFile], int]:
 
 def chunk_documents(
     docs: list[DocFile],
-    settings: Settings,
+    config: IngestionConfig,
     counter: TokenCounter,
 ) -> list[Chunk]:
     chunks: list[Chunk] = []
     for doc in docs:
-        chunks.extend(chunk_document(doc, settings, counter))
+        chunks.extend(chunk_document(doc, config, counter))
     return chunks
 
 
@@ -90,12 +100,12 @@ def build_corpus(
     source_dir: Path,
     out_path: Path,
     stats_path: Path,
-    settings: Settings,
+    config: IngestionConfig,
     counter: TokenCounter | None = None,
 ) -> CorpusStats:
     token_counter = counter or RegexTokenCounter()
-    docs, skipped = collect_docs(source_dir, settings.docs_base_url)
-    chunks = chunk_documents(docs, settings, token_counter)
+    docs, skipped = collect_docs(source_dir, config)
+    chunks = chunk_documents(docs, config, token_counter)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w", encoding="utf-8", newline="\n") as output:

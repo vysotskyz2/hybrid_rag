@@ -5,11 +5,14 @@
 | Корпус | Английские доки FastAPI, pinned commit `68cc4cb` | Официальный источник с точными API-именами; версия воспроизводима |
 | Язык запросов | RU и EN | Dense-модель мультиязычная, BM25 помогает с английскими идентификаторами |
 | Фильтрация корпуса | Исключаем release notes, служебные страницы, frontmatter, HTML-мусор и спонсорские секции | Меньше шума в retrieval |
-| Чанкинг | По заголовкам H1–H6, target 280 / max 350 / overlap 50 приблизительных токенов | Сохраняет смысл секции и не рвёт code fences |
-| Dense | `intfloat/multilingual-e5-base` | Хороший баланс качества и CPU- latency |
+| Include-директивы | Извлекаем `docs_src` и подставляем реальные примеры кода | В корпусе появляются полноценные code-чанки вместо заглушек |
+| Конфигурация | `.env` для runtime/секретов + `config/ingestion.toml` для корпуса | Секреты не смешиваются с настройками корпуса; TOML удобно ревьюить |
+| Чанкинг | По заголовкам H1–H6, max 350 / overlap 50 приблизительных токенов | Сохраняет смысл секции и не рвёт code fences |
+| Dense | `intfloat/multilingual-e5-base` | Хороший баланс качества и CPU-latency |
 | Sparse | FastEmbed `Qdrant/bm25`, `language=english` | Точные термины и редкие идентификаторы |
-| Vector DB | Qdrant 1.19 | Нативный hybrid search, sparse vectors, payload-фильтры |
+| Vector DB | Qdrant 1.19, named vectors `dense` + `sparse` | Нативный hybrid search, sparse vectors, payload-фильтры |
 | Fusion | RRF | Не требует сравнения несопоставимых score |
+| Индексация | Детерминированные UUID, batch upsert, удаление stale points | Идемпотентность и отсутствие мусора после пересборки |
 | Reranker | `BAAI/bge-reranker-v2-m3` | Мультиязычный cross-encoder, работает на CPU |
 | LLM | OpenRouter + DeepSeek | Дешёвый доступ к разным моделям через OpenAI-compatible API |
 | Тесты LLM | `FakeLLM` | Детерминированные тесты без ключа, сети и затрат |
