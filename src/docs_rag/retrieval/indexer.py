@@ -11,7 +11,7 @@ from qdrant_client import models
 
 from docs_rag.ingestion.models import Chunk
 from docs_rag.retrieval.embeddings import DenseEmbedder, SparseEmbedder
-from docs_rag.retrieval.store import DENSE_VECTOR, SPARSE_VECTOR, QdrantStore
+from docs_rag.retrieval.store import QdrantStore
 
 logger = structlog.get_logger(__name__)
 
@@ -70,9 +70,9 @@ def build_index(
             sparse_vectors,
             strict=True,
         ):
-            vector: dict[str, Any] = {DENSE_VECTOR: dense_vector}
+            vector: dict[str, Any] = {store.dense_vector_name: dense_vector}
             if sparse_vector.indices:
-                vector[SPARSE_VECTOR] = models.SparseVector(
+                vector[store.sparse_vector_name] = models.SparseVector(
                     indices=sparse_vector.indices,
                     values=sparse_vector.values,
                 )

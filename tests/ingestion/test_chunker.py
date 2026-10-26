@@ -1,14 +1,11 @@
 from pathlib import Path
 
-from docs_rag.config import Settings
 from docs_rag.ingestion.chunker import chunk_document
+from docs_rag.ingestion.config import ChunkingConfig
 from docs_rag.ingestion.models import DocFile
 from docs_rag.ingestion.tokens import RegexTokenCounter
 from docs_rag.ingestion.urls import doc_url, section_for_path
-
-
-def make_settings(**overrides: object) -> Settings:
-    return Settings(_env_file=None, **overrides)
+from tests.ingestion.helpers import make_config
 
 
 def make_doc(text: str, path: str = "tutorial/demo.md") -> DocFile:
@@ -34,8 +31,8 @@ with Python type hints. It provides automatic OpenAPI documentation and validati
 from fastapi import FastAPI
 ```
 """
-    settings = make_settings()
-    chunks = chunk_document(make_doc(markdown), settings, RegexTokenCounter())
+    config = make_config()
+    chunks = chunk_document(make_doc(markdown), config, RegexTokenCounter())
 
     assert len(chunks) == 1
     chunk = chunks[0]
@@ -46,7 +43,7 @@ from fastapi import FastAPI
     assert chunk.url == "https://example.com/tutorial/demo/"
     assert chunk.section == "tutorial"
     assert chunk.language == "en"
-    assert chunk.version == settings.docs_ref
+    assert chunk.version == config.corpus.ref
     assert chunk.doc_id == "tutorial/demo.md"
     assert chunk.chunk_index == 0
     assert chunk.content_type == "mixed"
@@ -58,15 +55,11 @@ from fastapi import FastAPI
 def test_long_section_is_split_with_overlap() -> None:
     words = " ".join(f"word{index}" for index in range(220))
     markdown = f"# Demo {{ #demo }}\n\n## Long {{ #long }}\n\n{words}\n"
-    settings = make_settings(
-        chunk_target_tokens=40,
-        chunk_max_tokens=50,
-        chunk_overlap_tokens=10,
-    )
-    chunks = chunk_document(make_doc(markdown), settings, RegexTokenCounter())
+    config = make_config(chunking=ChunkingConfig(max_tokens=50, overlap_tokens=10))
+    chunks = chunk_document(make_doc(markdown), config, RegexTokenCounter())
 
     assert len(chunks) > 1
-    assert all(chunk.token_count <= settings.chunk_max_tokens for chunk in chunks)
+    assert all(chunk.token_count <= config.chunking.max_tokens for chunk in chunks)
     assert [chunk.chunk_index for chunk in chunks] == list(range(len(chunks)))
 
     first_tail = chunks[0].text.split()[-5:]
@@ -76,22 +69,22 @@ def test_long_section_is_split_with_overlap() -> None:
 def test_oversized_code_block_is_split_without_broken_fences() -> None:
     code_lines = "\n".join(f"value_{index} = {index}" for index in range(120))
     markdown = f"# Demo {{ #demo }}\n\n## Code {{ #code }}\n\n```python\n{code_lines}\n```\n"
-    settings = make_settings(chunk_max_tokens=60, chunk_target_tokens=40, chunk_overlap_tokens=5)
-    chunks = chunk_document(make_doc(markdown), settings, RegexTokenCounter())
+    config = make_config(chunking=ChunkingConfig(max_tokens=60, overlap_tokens=5))
+    chunks = chunk_document(make_doc(markdown), config, RegexTokenCounter())
 
     assert len(chunks) > 1
     for chunk in chunks:
-        assert chunk.token_count <= settings.chunk_max_tokens
+        assert chunk.token_count <= config.chunking.max_tokens
         assert chunk.text.count("```") == 2
         assert chunk.text.split("```python", 1)[1].rsplit("```", 1)[0].strip()
 
 
 def test_chunk_ids_are_deterministic() -> None:
     markdown = "# Demo { #demo }\n\n## Section { #section }\n\nText.\n"
-    settings = make_settings()
+    config = make_config()
 
-    first = chunk_document(make_doc(markdown), settings, RegexTokenCounter())
-    second = chunk_document(make_doc(markdown), settings, RegexTokenCounter())
+    first = chunk_document(make_doc(markdown), config, RegexTokenCounter())
+    second = chunk_document(make_doc(markdown), config, RegexTokenCounter())
 
     assert [chunk.chunk_id for chunk in first] == [chunk.chunk_id for chunk in second]
     assert [chunk.content_hash for chunk in first] == [chunk.content_hash for chunk in second]
@@ -109,8 +102,8 @@ def test_html_tags_are_stripped_outside_code_blocks() -> None:
 <div class="example">keep me</div>
 ```
 """
-    settings = make_settings()
-    chunks = chunk_document(make_doc(markdown), settings, RegexTokenCounter())
+    config = make_config()
+    chunks = chunk_document(make_doc(markdown), config, RegexTokenCounter())
 
     assert "<dfn" not in chunks[0].text
     assert "Dependency Injection" in chunks[0].text
@@ -129,8 +122,8 @@ def test_sponsor_sections_are_skipped() -> None:
 
 Useful content.
 """
-    settings = make_settings()
-    chunks = chunk_document(make_doc(markdown), settings, RegexTokenCounter())
+    config = make_config()
+    chunks = chunk_document(make_doc(markdown), config, RegexTokenCounter())
 
     assert len(chunks) == 1
     assert chunks[0].heading_path == "Demo > Install"
@@ -139,8 +132,8 @@ Useful content.
 
 def test_content_type_is_code_for_code_only_section() -> None:
     markdown = "# Demo { #demo }\n\n## Code { #code }\n\n```python\nprint('hi')\n```\n"
-    settings = make_settings()
+    config = make_config()
 
-    chunks = chunk_document(make_doc(markdown), settings, RegexTokenCounter())
+    chunks = chunk_document(make_doc(markdown), config, RegexTokenCounter())
 
     assert chunks[0].content_type == "code"

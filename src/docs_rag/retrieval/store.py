@@ -28,10 +28,16 @@ class QdrantStore:
         self,
         client: QdrantClient,
         collection: str,
+        dense_vector_name: str = DENSE_VECTOR,
+        sparse_vector_name: str = SPARSE_VECTOR,
+        distance: str = "cosine",
         local: bool = False,
     ) -> None:
         self._client = client
         self._collection = collection
+        self._dense_vector_name = dense_vector_name
+        self._sparse_vector_name = sparse_vector_name
+        self._distance = distance
         self._local = local
 
     @classmethod
@@ -42,7 +48,13 @@ class QdrantStore:
             api_key=api_key or None,
             timeout=settings.qdrant_timeout,
         )
-        return cls(client, settings.qdrant_collection)
+        return cls(
+            client,
+            settings.qdrant_collection,
+            dense_vector_name=settings.dense_vector_name,
+            sparse_vector_name=settings.sparse_vector_name,
+            distance=settings.qdrant_distance,
+        )
 
     @classmethod
     def in_memory(cls, collection: str = "test") -> QdrantStore:
@@ -51,6 +63,14 @@ class QdrantStore:
     @property
     def collection(self) -> str:
         return self._collection
+
+    @property
+    def dense_vector_name(self) -> str:
+        return self._dense_vector_name
+
+    @property
+    def sparse_vector_name(self) -> str:
+        return self._sparse_vector_name
 
     def ensure_collection(self, dense_dimension: int, recreate: bool = False) -> bool:
         existing = {item.name for item in self._client.get_collections().collections}
@@ -63,13 +83,13 @@ class QdrantStore:
             self._client.create_collection(
                 collection_name=self._collection,
                 vectors_config={
-                    DENSE_VECTOR: models.VectorParams(
+                    self._dense_vector_name: models.VectorParams(
                         size=dense_dimension,
-                        distance=models.Distance.COSINE,
+                        distance=self._resolve_distance(),
                     )
                 },
                 sparse_vectors_config={
-                    SPARSE_VECTOR: models.SparseVectorParams(
+                    self._sparse_vector_name: models.SparseVectorParams(
                         modifier=models.Modifier.IDF,
                     )
                 },
@@ -79,16 +99,29 @@ class QdrantStore:
 
         info = self._client.get_collection(self._collection)
         vectors = info.config.params.vectors
-        if not isinstance(vectors, dict) or DENSE_VECTOR not in vectors:
-            raise ValueError(f"Collection {self._collection!r} has no {DENSE_VECTOR!r} vector")
+        if not isinstance(vectors, dict) or self._dense_vector_name not in vectors:
+            raise ValueError(
+                f"Collection {self._collection!r} has no {self._dense_vector_name!r} vector"
+            )
 
-        params = vectors[DENSE_VECTOR]
+        params = vectors[self._dense_vector_name]
         if params.size != dense_dimension:
             raise ValueError(
                 "Embedding dimension mismatch: "
                 f"collection={params.size}, model={dense_dimension}. Use --recreate."
             )
         return False
+
+    def _resolve_distance(self) -> models.Distance:
+        distances = {
+            "cosine": models.Distance.COSINE,
+            "dot": models.Distance.DOT,
+            "euclid": models.Distance.EUCLID,
+        }
+        try:
+            return distances[self._distance]
+        except KeyError as error:
+            raise ValueError(f"Unsupported distance: {self._distance}") from error
 
     def _create_payload_indexes(self) -> None:
         if self._local:
@@ -117,7 +150,7 @@ class QdrantStore:
         response = self._client.query_points(
             collection_name=self._collection,
             query=query_vector,
-            using=DENSE_VECTOR,
+            using=self._dense_vector_name,
             query_filter=build_qdrant_filter(filters),
             limit=limit,
             with_payload=True,
@@ -139,7 +172,7 @@ class QdrantStore:
                 indices=query_vector.indices,
                 values=query_vector.values,
             ),
-            using=SPARSE_VECTOR,
+            using=self._sparse_vector_name,
             query_filter=build_qdrant_filter(filters),
             limit=limit,
             with_payload=True,
@@ -158,7 +191,7 @@ class QdrantStore:
         prefetch = [
             models.Prefetch(
                 query=dense_vector,
-                using=DENSE_VECTOR,
+                using=self._dense_vector_name,
                 limit=candidates,
                 filter=qdrant_filter,
             )
@@ -170,7 +203,7 @@ class QdrantStore:
                         indices=sparse_vector.indices,
                         values=sparse_vector.values,
                     ),
-                    using=SPARSE_VECTOR,
+                    using=self._sparse_vector_name,
                     limit=candidates,
                     filter=qdrant_filter,
                 )

@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 
-from docs_rag.config import Settings
 from docs_rag.ingestion.pipeline import build_corpus
+from tests.ingestion.helpers import make_config
 
 
 def test_build_corpus_writes_chunks_and_stats(tmp_path: Path) -> None:
@@ -25,14 +25,9 @@ def test_build_corpus_writes_chunks_and_stats(tmp_path: Path) -> None:
 
     out_path = tmp_path / "chunks" / "chunks.jsonl"
     stats_path = tmp_path / "chunks" / "stats.json"
-    settings = Settings(
-        _env_file=None,
-        docs_ref="test-ref",
-        docs_base_url="https://example.com",
-        data_dir=tmp_path,
-    )
+    config = make_config()
 
-    stats = build_corpus(source, out_path, stats_path, settings)
+    stats = build_corpus(source, out_path, stats_path, config)
 
     lines = out_path.read_text(encoding="utf-8").splitlines()
     assert len(lines) == stats.chunks

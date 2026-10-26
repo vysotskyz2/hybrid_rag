@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import shutil
 import tarfile
 import urllib.request
@@ -5,24 +7,37 @@ from pathlib import Path, PurePosixPath
 
 import structlog
 
+from docs_rag import __version__
+from docs_rag.ingestion.config import IngestionConfig
+
 logger = structlog.get_logger(__name__)
 
-
-def archive_url(repo: str, ref: str) -> str:
-    return f"https://github.com/{repo}/archive/{ref}.tar.gz"
+USER_AGENT = f"docs-rag/{__version__}"
 
 
-def download_archive(url: str, dest: Path, force: bool = False) -> Path:
+def archive_url(repo: str, ref: str, template: str) -> str:
+    return template.format(repo=repo, ref=ref)
+
+
+def download_archive(
+    url: str,
+    dest: Path,
+    timeout: int = 120,
+    force: bool = False,
+) -> Path:
     if dest.exists() and dest.stat().st_size > 0 and not force:
         logger.info("archive_cached", path=str(dest))
         return dest
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     temporary = dest.with_name(f"{dest.name}.part")
-    request = urllib.request.Request(url, headers={"User-Agent": "docs-rag"})
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     logger.info("archive_download_start", url=url)
 
-    with urllib.request.urlopen(request, timeout=120) as response, temporary.open("wb") as output:
+    with (
+        urllib.request.urlopen(request, timeout=timeout) as response,
+        temporary.open("wb") as output,
+    ):
         while chunk := response.read(1024 * 1024):
             output.write(chunk)
 
@@ -79,10 +94,11 @@ def extract_docs(
 def extract_docs_sources(
     archive: Path,
     dest: Path,
+    source_path: str = "docs_src",
     archive_prefix: str | None = None,
 ) -> list[Path]:
-    marker = "/docs_src/"
-    dest_root = dest / "docs_src"
+    marker = f"/{source_path.strip('/')}/"
+    dest_root = dest / source_path
     dest_root.mkdir(parents=True, exist_ok=True)
     expected_root = archive_prefix.strip("/") if archive_prefix else None
     extracted: list[Path] = []
@@ -116,32 +132,53 @@ def extract_docs_sources(
 
 
 def fetch_docs(
-    repo: str,
-    ref: str,
+    config: IngestionConfig,
     data_dir: Path,
-    source_path: str,
+    archive_url_template: str,
+    timeout: int = 120,
     force: bool = False,
 ) -> Path:
-    safe_repo = repo.replace("/", "-")
-    safe_ref = ref.replace("/", "-")
-    dest = data_dir / "raw" / "fastapi-docs" / safe_ref
-    archive = data_dir / "raw" / f"{safe_repo}-{safe_ref}.tar.gz"
-    repo_name = repo.rsplit("/", 1)[-1]
-    archive_prefix = f"{repo_name}-"
+    corpus = config.corpus
+    project = corpus.project
+    safe_ref = corpus.ref.replace("/", "-")
+    dest = data_dir / "raw" / f"{project}-docs" / safe_ref
+    archive = data_dir / "raw" / f"{project}-{safe_ref}.tar.gz"
+    archive_prefix = f"{project}-"
 
     if dest.exists() and any(dest.rglob("*.md")) and not force:
-        if not (dest / "docs_src").exists():
-            extract_docs_sources(archive, dest, archive_prefix=archive_prefix)
+        if not (dest / corpus.docs_src_path).exists():
+            if not archive.exists():
+                download_archive(
+                    archive_url(corpus.repo, corpus.ref, archive_url_template),
+                    archive,
+                    timeout=timeout,
+                )
+            extract_docs_sources(
+                archive,
+                dest,
+                source_path=corpus.docs_src_path,
+                archive_prefix=archive_prefix,
+            )
         logger.info("docs_cached", path=str(dest))
         return dest
 
-    download_archive(archive_url(repo, ref), archive, force=force)
+    download_archive(
+        archive_url(corpus.repo, corpus.ref, archive_url_template),
+        archive,
+        timeout=timeout,
+        force=force,
+    )
     extract_docs(
         archive,
         dest,
-        prefix=source_path,
+        prefix=corpus.source_path,
         archive_prefix=archive_prefix,
         force=force,
     )
-    extract_docs_sources(archive, dest, archive_prefix=archive_prefix)
+    extract_docs_sources(
+        archive,
+        dest,
+        source_path=corpus.docs_src_path,
+        archive_prefix=archive_prefix,
+    )
     return dest

@@ -31,6 +31,9 @@ class SentenceTransformerDenseEmbedder:
         model_name: str,
         device: str = "cpu",
         batch_size: int = 32,
+        query_prefix: str = "query: ",
+        passage_prefix: str = "passage: ",
+        normalize: bool = True,
     ) -> None:
         from sentence_transformers import SentenceTransformer
 
@@ -40,16 +43,19 @@ class SentenceTransformerDenseEmbedder:
             raise ValueError(f"Embedding model has no dimension: {model_name}")
         self._dimension = int(dimension)
         self._batch_size = batch_size
+        self._query_prefix = query_prefix
+        self._passage_prefix = passage_prefix
+        self._normalize = normalize
 
     @property
     def dimension(self) -> int:
         return self._dimension
 
     def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
-        return self._encode([f"passage: {text}" for text in texts])
+        return self._encode([f"{self._passage_prefix}{text}" for text in texts])
 
     def embed_query(self, text: str) -> list[float]:
-        return self._encode([f"query: {text}"])[0]
+        return self._encode([f"{self._query_prefix}{text}"])[0]
 
     def _encode(self, texts: list[str]) -> list[list[float]]:
         if not texts:
@@ -57,7 +63,7 @@ class SentenceTransformerDenseEmbedder:
         vectors = self._model.encode(
             texts,
             batch_size=self._batch_size,
-            normalize_embeddings=True,
+            normalize_embeddings=self._normalize,
             show_progress_bar=False,
         )
         return cast(list[list[float]], vectors.tolist())

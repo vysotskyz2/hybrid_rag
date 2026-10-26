@@ -24,8 +24,16 @@ _LANGUAGE_BY_SUFFIX = {
 }
 
 
-def resolve_includes(markdown: str, source_dir: Path) -> str:
-    docs_src = source_dir / "docs_src"
+def resolve_includes(
+    markdown: str,
+    source_dir: Path,
+    docs_src_path: str = "docs_src",
+    enabled: bool = True,
+) -> str:
+    if not enabled:
+        return markdown
+
+    docs_src = source_dir / docs_src_path
     if not docs_src.exists():
         return markdown
 

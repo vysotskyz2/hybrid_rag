@@ -11,7 +11,7 @@ from docs_rag.logging import configure_logging
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
-    configure_logging(settings.log_level)
+    configure_logging(settings.log_level, settings.log_format)
     yield
 
 

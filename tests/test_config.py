@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from docs_rag.config import Settings, get_settings
@@ -10,8 +12,12 @@ def test_settings_defaults() -> None:
     assert settings.qdrant_url == "http://localhost:6333"
     assert settings.retrieval_top_k == 5
     assert settings.llm_mode == "openrouter"
-    assert settings.docs_ref == "68cc4cbb2e0600841b0d6bdd1cc29038b54a00e6"
-    assert settings.chunk_max_tokens == 350
+    assert settings.ingestion_config == Path("config/ingestion.toml")
+    assert settings.log_format == "json"
+    assert settings.dense_query_prefix == "query: "
+    assert settings.dense_vector_name == "dense"
+    assert settings.qdrant_distance == "cosine"
+    assert settings.retrieval_default_mode == "hybrid"
 
 
 def test_settings_env_override(monkeypatch: pytest.MonkeyPatch) -> None:

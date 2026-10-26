@@ -46,6 +46,7 @@ def test_extract_docs_sources_copies_examples(tmp_path: Path) -> None:
     extracted = extract_docs_sources(
         archive,
         dest,
+        source_path="docs_src",
         archive_prefix="fastapi-abc",
     )
 
