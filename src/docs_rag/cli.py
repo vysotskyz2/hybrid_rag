@@ -9,6 +9,14 @@ from docs_rag.config import Settings, get_settings
 from docs_rag.ingestion.fetch import fetch_docs
 from docs_rag.ingestion.pipeline import CorpusStats, build_corpus
 from docs_rag.logging import configure_logging
+from docs_rag.retrieval.embeddings import (
+    FastEmbedSparseEmbedder,
+    SentenceTransformerDenseEmbedder,
+)
+from docs_rag.retrieval.indexer import build_index, load_chunks
+from docs_rag.retrieval.models import SearchFilters
+from docs_rag.retrieval.search import Retriever
+from docs_rag.retrieval.store import QdrantStore
 
 
 def _add_fetch_options(parser: argparse.ArgumentParser) -> None:
@@ -48,6 +56,35 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_fetch_options(ingest_parser)
     _add_chunk_options(ingest_parser)
     ingest_parser.set_defaults(func=_cmd_ingest)
+
+    index_parser = subparsers.add_parser(
+        "index",
+        help="Embed chunks and upsert them into Qdrant",
+    )
+    index_parser.add_argument("--chunks", type=Path, default=None, help="Chunks JSONL path")
+    index_parser.add_argument("--data-dir", type=Path, default=None, help="Data directory")
+    index_parser.add_argument("--batch-size", type=int, default=None)
+    index_parser.add_argument("--recreate", action="store_true", help="Recreate collection")
+    index_parser.set_defaults(func=_cmd_index)
+
+    search_parser = subparsers.add_parser("search", help="Search the Qdrant index")
+    search_parser.add_argument("--query", required=True)
+    search_parser.add_argument(
+        "--mode",
+        choices=("dense", "sparse", "hybrid"),
+        default="hybrid",
+    )
+    search_parser.add_argument("--top-k", type=int, default=None)
+    search_parser.add_argument("--candidates", type=int, default=None)
+    search_parser.add_argument("--section", default=None)
+    search_parser.add_argument(
+        "--content-type",
+        choices=("prose", "code", "mixed"),
+        default=None,
+    )
+    search_parser.add_argument("--language", default=None)
+    search_parser.add_argument("--version", default=None)
+    search_parser.set_defaults(func=_cmd_search)
 
     return parser
 
@@ -138,6 +175,87 @@ def _cmd_ingest(args: argparse.Namespace, settings: Settings) -> None:
     stats_path = args.stats or data_dir / "chunks" / "stats.json"
     stats = _run_chunk(source, out, stats_path, args, settings)
     _print_stats(stats)
+
+
+def _cmd_index(args: argparse.Namespace, settings: Settings) -> None:
+    data_dir = _resolve_data_dir(args, settings)
+    chunks_path = args.chunks or data_dir / "chunks" / "chunks.jsonl"
+    if not chunks_path.exists():
+        raise SystemExit(f"Chunks file not found: {chunks_path}")
+
+    chunks = load_chunks(chunks_path)
+    if not chunks:
+        raise SystemExit(f"No chunks found in: {chunks_path}")
+
+    dense = SentenceTransformerDenseEmbedder(
+        model_name=settings.embedding_model,
+        device=settings.embedding_device,
+        batch_size=settings.embedding_batch_size,
+    )
+    sparse = FastEmbedSparseEmbedder(
+        model_name=settings.sparse_model,
+        language=settings.sparse_language,
+        batch_size=settings.embedding_batch_size,
+    )
+    store = QdrantStore.from_settings(settings)
+    try:
+        stats = build_index(
+            chunks=chunks,
+            store=store,
+            dense=dense,
+            sparse=sparse,
+            version=chunks[0].version,
+            batch_size=(
+                args.batch_size if args.batch_size is not None else settings.index_batch_size
+            ),
+            recreate=args.recreate,
+        )
+        print(json.dumps(stats.to_dict(), indent=2, ensure_ascii=False))
+    finally:
+        store.close()
+
+
+def _cmd_search(args: argparse.Namespace, settings: Settings) -> None:
+    dense = SentenceTransformerDenseEmbedder(
+        model_name=settings.embedding_model,
+        device=settings.embedding_device,
+        batch_size=settings.embedding_batch_size,
+    )
+    sparse = FastEmbedSparseEmbedder(
+        model_name=settings.sparse_model,
+        language=settings.sparse_language,
+        batch_size=settings.embedding_batch_size,
+    )
+    store = QdrantStore.from_settings(settings)
+    try:
+        retriever = Retriever(
+            store=store,
+            dense=dense,
+            sparse=sparse,
+            candidates=(
+                args.candidates if args.candidates is not None else settings.retrieval_candidates
+            ),
+        )
+        results = retriever.search(
+            query=args.query,
+            mode=args.mode,
+            top_k=(args.top_k if args.top_k is not None else settings.retrieval_top_k),
+            filters=SearchFilters(
+                section=args.section,
+                content_type=args.content_type,
+                language=args.language,
+                version=args.version,
+            ),
+        )
+        print(
+            json.dumps(
+                [result.to_dict() for result in results],
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+    finally:
+        store.close()
 
 
 def main(argv: Sequence[str] | None = None) -> None:

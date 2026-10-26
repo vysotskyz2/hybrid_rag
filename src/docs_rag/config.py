@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: SecretStr | None = None
     qdrant_collection: str = "fastapi_docs"
+    qdrant_timeout: int = 30
+    index_batch_size: int = 32
 
     docs_repo: str = "fastapi/fastapi"
     docs_ref: str = "68cc4cbb2e0600841b0d6bdd1cc29038b54a00e6"
