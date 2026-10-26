@@ -7,6 +7,7 @@ import structlog
 from docs_rag.config import Settings
 from docs_rag.ingestion.chunker import chunk_document
 from docs_rag.ingestion.filters import is_indexable
+from docs_rag.ingestion.includes import resolve_includes
 from docs_rag.ingestion.models import Chunk, DocFile
 from docs_rag.ingestion.tokens import RegexTokenCounter, TokenCounter
 from docs_rag.ingestion.urls import doc_url, section_for_path
@@ -65,7 +66,10 @@ def collect_docs(source_dir: Path, base_url: str) -> tuple[list[DocFile], int]:
         docs.append(
             DocFile(
                 relative_path=relative_path,
-                text=path.read_text(encoding="utf-8"),
+                text=resolve_includes(
+                    path.read_text(encoding="utf-8"),
+                    source_dir,
+                ),
                 url=doc_url(relative_path, base_url),
                 title=Path(relative_path).stem,
                 section=section_for_path(relative_path),

@@ -2,7 +2,7 @@ import io
 import tarfile
 from pathlib import Path
 
-from docs_rag.ingestion.fetch import extract_docs
+from docs_rag.ingestion.fetch import extract_docs, extract_docs_sources
 
 
 def add_member(tar: tarfile.TarFile, name: str, data: bytes) -> None:
@@ -33,3 +33,22 @@ def test_extract_docs_only_takes_markdown_from_target_prefix(tmp_path: Path) -> 
     assert relative == {"index.md", "tutorial/body.md"}
     assert (dest / "index.md").read_text(encoding="utf-8") == "# Index"
     assert not (dest / "evil.md").exists()
+
+
+def test_extract_docs_sources_copies_examples(tmp_path: Path) -> None:
+    archive = tmp_path / "docs.tar.gz"
+
+    with tarfile.open(archive, mode="w:gz") as tar:
+        add_member(tar, "fastapi-abc/docs_src/example.py", b"print('hello')")
+        add_member(tar, "fastapi-abc/docs/en/docs/index.md", b"# Index")
+
+    dest = tmp_path / "extracted"
+    extracted = extract_docs_sources(
+        archive,
+        dest,
+        archive_prefix="fastapi-abc",
+    )
+
+    relative = {path.relative_to(dest).as_posix() for path in extracted}
+    assert relative == {"docs_src/example.py"}
+    assert (dest / "docs_src" / "example.py").read_text(encoding="utf-8") == "print('hello')"

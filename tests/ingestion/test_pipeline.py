@@ -8,12 +8,17 @@ from docs_rag.ingestion.pipeline import build_corpus
 def test_build_corpus_writes_chunks_and_stats(tmp_path: Path) -> None:
     source = tmp_path / "source"
     (source / "tutorial").mkdir(parents=True)
-    (source / "tutorial" / "body.md").write_text(
-        "# Body { #body }\n\n## Install { #install }\n\nInstall FastAPI.\n",
-        encoding="utf-8",
-    )
     (source / "index.md").write_text(
         "# Home { #home }\n\nWelcome to the docs.\n",
+        encoding="utf-8",
+    )
+    (source / "docs_src").mkdir()
+    (source / "docs_src" / "example.py").write_text(
+        "from fastapi import FastAPI\n",
+        encoding="utf-8",
+    )
+    (source / "tutorial" / "body.md").write_text(
+        "# Body { #body }\n\n## Example { #example }\n\n{* ../../docs_src/example.py hl[1] *}\n",
         encoding="utf-8",
     )
     (source / "release-notes.md").write_text("# Release notes\n", encoding="utf-8")
