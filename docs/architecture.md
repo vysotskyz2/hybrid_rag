@@ -50,6 +50,28 @@ GitHub tarball @ pinned SHA
 `version`, `content_hash` и `token_count`. Это позволит на этапе retrieval
 фильтровать по разделу и строить цитаты без дополнительных запросов.
 
+## Retrieval
+
+```text
+query (RU/EN)
+  ├─ e5 query embedding ──> dense search ─┐
+  └─ BM25 query vector ───> sparse search ─┤
+                                            ├─ RRF fusion ─> top-k
+                                            └─ filters: section, content_type,
+                                               language, version, path
+```
+
+Qdrant collection:
+
+- `dense`: 768 dim, cosine, `multilingual-e5-base`;
+- `sparse`: BM25 + IDF;
+- point ID = UUID чанка;
+- payload indexes по метаданным.
+
+Индексация идемпотентна: повторный upsert обновляет точки по UUID, а stale points
+удаляются после успешной записи. Полная пересборка — `--recreate`.
+
+
 
 ## Принципы
 
