@@ -77,6 +77,7 @@ stdlib `tomllib`. CLI-флаги переопределяют значения T
 | `QDRANT_DISTANCE` | `cosine` | `cosine`, `dot`, `euclid` |
 | `DENSE_VECTOR_NAME` | `dense` | Имя dense-вектора |
 | `SPARSE_VECTOR_NAME` | `sparse` | Имя sparse-вектора |
+| `PAYLOAD_INDEX_FIELDS` | JSON-массив полей | Поля payload-индексов |
 | `INDEX_BATCH_SIZE` | `32` | Размер батча индексации |
 
 При смене имён векторов или distance нужен `index --recreate`.
@@ -123,6 +124,8 @@ LLM пока не используется на этапе 2.
 | `QDRANT_HTTP_PORT` | `6333` |
 | `QDRANT_GRPC_PORT` | `6334` |
 | `API_PORT` | `8000` |
+| `PYTHON_VERSION` | `3.12` |
+| `UV_VERSION` | `0.13.4` |
 
 ## CLI-переопределения
 

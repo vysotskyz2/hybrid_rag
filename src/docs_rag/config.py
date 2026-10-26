@@ -30,6 +30,14 @@ class Settings(BaseSettings):
     qdrant_distance: Literal["cosine", "dot", "euclid"] = "cosine"
     dense_vector_name: str = "dense"
     sparse_vector_name: str = "sparse"
+    payload_index_fields: tuple[str, ...] = (
+        "section",
+        "content_type",
+        "language",
+        "version",
+        "path",
+        "project",
+    )
     index_batch_size: int = 32
 
     embedding_model: str = "intfloat/multilingual-e5-base"

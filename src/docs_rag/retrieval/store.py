@@ -31,6 +31,7 @@ class QdrantStore:
         dense_vector_name: str = DENSE_VECTOR,
         sparse_vector_name: str = SPARSE_VECTOR,
         distance: str = "cosine",
+        payload_index_fields: tuple[str, ...] = PAYLOAD_INDEX_FIELDS,
         local: bool = False,
     ) -> None:
         self._client = client
@@ -38,6 +39,7 @@ class QdrantStore:
         self._dense_vector_name = dense_vector_name
         self._sparse_vector_name = sparse_vector_name
         self._distance = distance
+        self._payload_index_fields = payload_index_fields
         self._local = local
 
     @classmethod
@@ -54,6 +56,7 @@ class QdrantStore:
             dense_vector_name=settings.dense_vector_name,
             sparse_vector_name=settings.sparse_vector_name,
             distance=settings.qdrant_distance,
+            payload_index_fields=settings.payload_index_fields,
         )
 
     @classmethod
@@ -126,7 +129,7 @@ class QdrantStore:
     def _create_payload_indexes(self) -> None:
         if self._local:
             return
-        for field_name in PAYLOAD_INDEX_FIELDS:
+        for field_name in self._payload_index_fields:
             self._client.create_payload_index(
                 collection_name=self._collection,
                 field_name=field_name,

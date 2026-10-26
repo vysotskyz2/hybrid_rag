@@ -18,16 +18,26 @@ def test_settings_defaults() -> None:
     assert settings.dense_vector_name == "dense"
     assert settings.qdrant_distance == "cosine"
     assert settings.retrieval_default_mode == "hybrid"
+    assert settings.payload_index_fields == (
+        "section",
+        "content_type",
+        "language",
+        "version",
+        "path",
+        "project",
+    )
 
 
 def test_settings_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("APP_NAME", "Test App")
     monkeypatch.setenv("RETRIEVAL_TOP_K", "7")
+    monkeypatch.setenv("PAYLOAD_INDEX_FIELDS", '["section","version"]')
 
     settings = Settings(_env_file=None)
 
     assert settings.app_name == "Test App"
     assert settings.retrieval_top_k == 7
+    assert settings.payload_index_fields == ("section", "version")
 
 
 def test_get_settings_is_cached() -> None:
