@@ -96,6 +96,21 @@ Pipeline:
 
 Подробности: [`docs/ingestion.md`](docs/ingestion.md).
 
+## Конфигурация
+
+Два слоя:
+
+- `.env` — инфраструктура, секреты, модели, Qdrant, retrieval и LLM;
+- `config/ingestion.toml` — источник документации, фильтры, параметры чанкинга и output paths.
+
+CLI-флаги переопределяют TOML для конкретного запуска:
+
+```powershell
+uv run docs-rag ingest --config config/ingestion.toml --max-tokens 300
+```
+
+Полная таблица переменных и ключей: [`docs/configuration.md`](docs/configuration.md).
+
 ## Retrieval
 
 Коллекция Qdrant `fastapi_docs`:
@@ -129,15 +144,16 @@ uv run docs-rag search --query "Depends" --mode hybrid --section tutorial --cont
 ## Структура
 
 ```text
+config/ingestion.toml  # корпус, фильтры, чанкинг
 src/docs_rag/
 ├── api/          # FastAPI-приложение
 ├── ingestion/    # fetch, parse, includes, chunk, pipeline
 ├── retrieval/    # embeddings, Qdrant store, indexer, search
-├── config.py     # настройки из переменных окружения
+├── config.py     # runtime-настройки из .env
 ├── logging.py    # structlog
 └── cli.py        # CLI-точка входа
 tests/            # unit-, retrieval- и API-тесты
-docs/             # архитектура, ingestion, retrieval и решения
+docs/             # архитектура, ingestion, retrieval, конфигурация
 ```
 
 ## План этапов

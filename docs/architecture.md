@@ -38,9 +38,10 @@ flowchart LR
 ## Ingestion
 
 ```text
-GitHub tarball @ pinned SHA
-  → docs/en/docs/**/*.md
-  → filter + frontmatter/HTML cleanup
+config/ingestion.toml
+  → GitHub tarball @ pinned SHA
+  → docs/en/docs/**/*.md + docs_src/**
+  → filter + frontmatter/HTML cleanup + include resolution
   → heading-aware sections
   → block-based chunks (max 350 approx tokens, overlap 50)
   → data/chunks/chunks.jsonl + stats.json

@@ -10,6 +10,10 @@
 | `sparse` | FastEmbed `Qdrant/bm25`, `modifier=IDF` |
 | Payload indexes | `section`, `content_type`, `language`, `version`, `path`, `project` |
 
+Имена векторов, distance, коллекция и endpoint задаются в `.env`
+(`DENSE_VECTOR_NAME`, `SPARSE_VECTOR_NAME`, `QDRANT_DISTANCE`, `QDRANT_URL`).
+При смене схемы нужен `index --recreate`.
+
 Point ID — детерминированный UUID чанка. Payload содержит весь текст чанка и метаданные,
 поэтому для выдачи результата не нужен второй запрос.
 
@@ -20,6 +24,9 @@ Dense:
 - документы: `passage: <text>`;
 - запросы: `query: <text>`;
 - `normalize_embeddings=True`, cosine.
+
+Префиксы и нормализация задаются через `DENSE_QUERY_PREFIX`,
+`DENSE_PASSAGE_PREFIX`, `NORMALIZE_EMBEDDINGS`.
 
 Sparse:
 
