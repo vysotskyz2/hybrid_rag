@@ -114,7 +114,22 @@ stdlib `tomllib`. CLI-флаги переопределяют значения T
 | `LLM_API_KEY` | пусто | Ключ OpenRouter |
 | `LLM_MODEL` | `deepseek/deepseek-chat` | ID модели |
 
-LLM пока не используется на этапе 2.
+LLM пока не используется; генерация ответов появится на этапе 4.
+
+### API и UI
+
+| Переменная | По умолчанию | Описание |
+|---|---|---|
+| `CORS_ORIGINS` | `["http://localhost:8501"]` | JSON-массив разрешённых origins |
+| `UI_API_URL` | `http://localhost:8000` | URL API для Streamlit |
+| `SEARCH_MAX_TOP_K` | `20` | Верхняя граница `top_k` в `/api/search` |
+| `QUERY_MAX_LENGTH` | `500` | Максимальная длина запроса в символах |
+
+`CORS_ORIGINS` задаётся JSON-массивом, как `PAYLOAD_INDEX_FIELDS`:
+
+```dotenv
+CORS_ORIGINS=["http://localhost:8501","http://127.0.0.1:8501"]
+```
 
 ### Docker Compose
 

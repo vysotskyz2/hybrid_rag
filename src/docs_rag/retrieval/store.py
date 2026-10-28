@@ -265,5 +265,18 @@ class QdrantStore:
             exact=True,
         ).count
 
+    def corpus_version(self) -> str | None:
+        records, _ = self._client.scroll(
+            collection_name=self._collection,
+            limit=1,
+            with_payload=["version"],
+            with_vectors=False,
+        )
+        if not records:
+            return None
+        payload = records[0].payload or {}
+        value = payload.get("version")
+        return str(value) if value is not None else None
+
     def close(self) -> None:
         self._client.close()

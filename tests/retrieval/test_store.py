@@ -119,3 +119,13 @@ def test_dimension_mismatch_requires_recreate(store: QdrantStore) -> None:
 
     with pytest.raises(ValueError, match="dimension mismatch"):
         store.ensure_collection(8)
+
+
+def test_corpus_version(
+    store: QdrantStore,
+    dense_embedder: object,
+    sparse_embedder: object,
+) -> None:
+    build_test_index(store, dense_embedder, sparse_embedder)
+
+    assert store.corpus_version() == "v1"

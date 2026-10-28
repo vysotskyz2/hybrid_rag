@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://openrouter.ai/api/v1"
     llm_api_key: SecretStr | None = None
     llm_model: str = "deepseek/deepseek-chat"
+
+    cors_origins: tuple[str, ...] = ("http://localhost:8501",)
+    ui_api_url: str = "http://localhost:8000"
+    search_max_top_k: int = Field(default=20, ge=1)
+    query_max_length: int = Field(default=500, ge=1)
 
 
 @lru_cache
