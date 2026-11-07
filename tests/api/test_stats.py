@@ -3,7 +3,8 @@ from fastapi.testclient import TestClient
 from docs_rag.api.deps import AppServices
 from docs_rag.api.main import create_app
 from docs_rag.config import Settings
-from tests.api.helpers import FakeRetriever, FakeStore
+from docs_rag.generation.llm import FakeLLM
+from tests.api.helpers import FakeSearchService, FakeStore
 
 
 def test_stats(client: TestClient) -> None:
@@ -21,7 +22,9 @@ def test_stats(client: TestClient) -> None:
 def test_stats_with_empty_collection(settings: Settings) -> None:
     app = create_app(
         settings,
-        AppServices(retriever=FakeRetriever(), store=FakeStore(points=0, version=None)),
+        AppServices(
+            search=FakeSearchService(), store=FakeStore(points=0, version=None), llm=FakeLLM()
+        ),
     )
 
     with TestClient(app) as client:
@@ -35,7 +38,7 @@ def test_stats_with_empty_collection(settings: Settings) -> None:
 def test_stats_when_qdrant_is_unavailable(settings: Settings) -> None:
     app = create_app(
         settings,
-        AppServices(retriever=FakeRetriever(), store=FakeStore(fail=True)),
+        AppServices(search=FakeSearchService(), store=FakeStore(fail=True), llm=FakeLLM()),
     )
 
     with TestClient(app) as client:

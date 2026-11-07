@@ -33,6 +33,7 @@ class SearchResult:
     version: str
     token_count: int
     text: str
+    retrieval_score: float | None = None
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)

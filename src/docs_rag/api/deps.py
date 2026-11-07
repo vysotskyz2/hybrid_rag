@@ -6,16 +6,18 @@ from typing import Annotated, Protocol, cast
 from fastapi import Depends, HTTPException, Request, status
 
 from docs_rag.config import Settings
+from docs_rag.generation.llm import LLMClient
 from docs_rag.retrieval.models import SearchFilters, SearchMode, SearchResult
 
 
-class SearchRetriever(Protocol):
+class SearchServiceProtocol(Protocol):
     def search(
         self,
         query: str,
         mode: SearchMode = "hybrid",
         top_k: int = 5,
         filters: SearchFilters | None = None,
+        rerank: bool = True,
     ) -> list[SearchResult]: ...
 
 
@@ -38,8 +40,9 @@ class SearchStore(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class AppServices:
-    retriever: SearchRetriever
+    search: SearchServiceProtocol
     store: SearchStore
+    llm: LLMClient
 
 
 def get_app_services(request: Request) -> AppServices:

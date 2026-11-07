@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from collections.abc import Iterator
 from typing import Any
 
 import httpx
@@ -20,6 +22,13 @@ CONTENT_TYPES = ("", "prose", "code", "mixed")
 SECTIONS = ("", "tutorial", "advanced", "how-to", "reference", "deployment", "root")
 MAX_TOP_K = SETTINGS.search_max_top_k
 DEFAULT_TOP_K = min(SETTINGS.retrieval_top_k, MAX_TOP_K)
+
+if "chat_messages" not in st.session_state:
+    st.session_state.chat_messages = []
+
+
+class ApiError(Exception):
+    pass
 
 
 def _error_detail(response: httpx.Response) -> str:
@@ -99,8 +108,81 @@ def api_search(
     return api_request("POST", "/api/search", payload)
 
 
+def api_ask_events(payload: dict[str, Any]) -> Iterator[tuple[str, dict[str, Any]]]:
+    try:
+        with get_client(API_URL).stream(
+            "POST",
+            "/api/ask",
+            json=payload,
+            timeout=180.0,
+        ) as response:
+            if response.status_code >= 400:
+                response.read()
+                raise ApiError(_error_detail(response))
+
+            event = "message"
+            data_lines: list[str] = []
+            for line in response.iter_lines():
+                if not line:
+                    if data_lines:
+                        try:
+                            data = json.loads("\n".join(data_lines))
+                        except json.JSONDecodeError as exc:
+                            raise ApiError("API вернул некорректный SSE-ответ") from exc
+                        yield event, data
+                    event = "message"
+                    data_lines = []
+                    continue
+                if line.startswith(":"):
+                    continue
+                if line.startswith("event:"):
+                    event = line[6:].strip()
+                elif line.startswith("data:"):
+                    data_lines.append(line[5:].lstrip())
+    except httpx.HTTPError as exc:
+        raise ApiError(f"API недоступен: {exc}") from exc
+
+
 def _format_option(value: str) -> str:
     return value if value else "все"
+
+
+def _score_text(item: dict[str, Any]) -> str:
+    text = f"score: {float(item.get('score', 0)):.4f}"
+    if item.get("retrieval_score") is not None:
+        text += f" (retrieval: {float(item['retrieval_score']):.4f})"
+    return text
+
+
+def render_sources(sources: list[dict[str, Any]]) -> None:
+    if not sources:
+        return
+
+    st.markdown("**Источники**")
+    for source in sources:
+        title = source.get("title") or source.get("path") or "Без названия"
+        with st.container(border=True):
+            st.markdown(f"**[{source.get('index')}] {title}**")
+            st.caption(
+                f"{source.get('heading_path', '')} · раздел: {source.get('section', '')} · "
+                f"{_score_text(source)}"
+            )
+            url = source.get("url")
+            if url:
+                st.markdown(f"[Открыть документацию]({url})")
+            with st.expander("Текст источника"):
+                st.markdown(source.get("text", ""))
+
+
+def render_chat_message(message: dict[str, Any]) -> None:
+    with st.chat_message(message.get("role", "assistant")):
+        content = message.get("content", "")
+        if content:
+            st.markdown(content)
+        if message.get("error"):
+            st.error(message["error"])
+        if message.get("sources"):
+            render_sources(message["sources"])
 
 
 def render_results(data: dict[str, Any]) -> None:
@@ -110,7 +192,8 @@ def render_results(data: dict[str, Any]) -> None:
         return
 
     st.caption(
-        f"Режим: {data.get('mode')} · top-k: {data.get('top_k')} · результатов: {len(results)}"
+        f"Режим: {data.get('mode')} · top-k: {data.get('top_k')} · "
+        f"результатов: {len(results)} · reranked: {data.get('reranked', False)}"
     )
     for rank, item in enumerate(results, start=1):
         with st.container(border=True):
@@ -118,8 +201,7 @@ def render_results(data: dict[str, Any]) -> None:
             st.markdown(f"**{rank}. {title}**")
             st.caption(
                 f"{item.get('heading_path', '')} · раздел: {item.get('section', '')} · "
-                f"тип: {item.get('content_type', '')} · "
-                f"score: {float(item.get('score', 0)):.4f}"
+                f"тип: {item.get('content_type', '')} · {_score_text(item)}"
             )
             url = item.get("url")
             if url:
@@ -140,9 +222,8 @@ def render_compact_results(data: dict[str, Any]) -> None:
 
     for rank, item in enumerate(results, start=1):
         title = item.get("title") or item.get("path") or "Без названия"
-        score = float(item.get("score", 0))
         st.markdown(f"**{rank}. {title}**")
-        st.caption(f"score: {score:.4f}")
+        st.caption(_score_text(item))
         st.caption(
             f"{item.get('heading_path', '')} · {item.get('section', '')} · "
             f"{item.get('content_type', '')}"
@@ -169,13 +250,14 @@ with st.sidebar:
         "**Возможности**\n\n"
         "- поиск: dense / sparse / hybrid\n"
         "- сравнение режимов\n"
-        "- фильтры по разделу и типу содержимого"
+        "- фильтры по разделу и типу содержимого\n"
+        "- ответы с цитатами в чате"  # noqa: RUF001
     )
 
 st.title("DocsLens")
-st.caption("Гибридный поиск по документации FastAPI: dense + BM25")
+st.caption("Гибридный RAG по документации FastAPI: поиск, сравнение и ответы")
 
-search_tab, compare_tab = st.tabs(["Поиск", "Сравнение"])
+search_tab, compare_tab, chat_tab = st.tabs(["Поиск", "Сравнение", "Чат"])
 
 with search_tab:
     with st.form("search-form"):
@@ -243,3 +325,81 @@ with compare_tab:
                         )
                     if mode_data is not None:
                         render_compact_results(mode_data)
+
+with chat_tab:
+    st.caption(
+        f"Каждый вопрос обрабатывается независимо. LLM: {SETTINGS.llm_mode} / {SETTINGS.llm_model}."
+    )
+    if st.button("Очистить диалог", key="clear-chat"):
+        st.session_state.chat_messages = []
+        st.rerun()
+
+    for message in st.session_state.chat_messages:
+        render_chat_message(message)
+
+    left, middle, right = st.columns(3)
+    chat_mode = left.selectbox("Режим поиска", MODES, key="chat-mode")
+    chat_top_k = middle.slider("top-k", 1, MAX_TOP_K, DEFAULT_TOP_K, key="chat-top-k")
+    chat_content_type = right.selectbox(
+        "Тип содержимого",
+        CONTENT_TYPES,
+        format_func=_format_option,
+        key="chat-content-type",
+    )
+    chat_section = st.selectbox(
+        "Раздел",
+        SECTIONS,
+        format_func=_format_option,
+        key="chat-section",
+    )
+
+    prompt = st.chat_input("Спросите по документации...")
+    if prompt:
+        prompt = prompt.strip()
+        if not prompt:
+            st.warning("Введите вопрос.")
+        else:
+            st.session_state.chat_messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+
+            payload: dict[str, Any] = {
+                "query": prompt,
+                "mode": chat_mode,
+                "top_k": chat_top_k,
+            }
+            if chat_section:
+                payload["section"] = chat_section
+            if chat_content_type:
+                payload["content_type"] = chat_content_type
+
+            sources: list[dict[str, Any]] = []
+            answer = ""
+            error: str | None = None
+            with st.chat_message("assistant"):
+                placeholder = st.empty()
+                try:
+                    with st.spinner("Думаю..."):
+                        for event, data in api_ask_events(payload):
+                            if event == "sources":
+                                sources = list(data.get("sources", []))
+                            elif event == "token":
+                                answer += str(data.get("text", ""))
+                                placeholder.markdown(answer)
+                            elif event == "error":
+                                error = str(data.get("detail", "Ошибка генерации"))
+                except ApiError as exc:
+                    error = str(exc)
+                if error:
+                    st.error(error)
+                if sources:
+                    render_sources(sources)
+
+            st.session_state.chat_messages.append(
+                {
+                    "role": "assistant",
+                    "content": answer,
+                    "sources": sources,
+                    "error": error,
+                }
+            )

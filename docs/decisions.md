@@ -13,10 +13,12 @@
 | Vector DB | Qdrant 1.19, named vectors `dense` + `sparse` | Нативный hybrid search, sparse vectors, payload-фильтры |
 | Fusion | RRF | Не требует сравнения несопоставимых score |
 | Индексация | Детерминированные UUID, batch upsert, удаление stale points | Идемпотентность и отсутствие мусора после пересборки |
-| Reranker | `BAAI/bge-reranker-v2-m3` | Мультиязычный cross-encoder, работает на CPU |
+| Reranker | `BAAI/bge-reranker-v2-m3`, 10 кандидатов, max length 512 | Мультиязычный cross-encoder; ограничения снижают CPU-latency |
 | LLM | OpenRouter + DeepSeek | Дешёвый доступ к разным моделям через OpenAI-compatible API |
+| LLM-клиент | `httpx.AsyncClient` + ручной разбор SSE | Без новой зависимости и с полным контролем над стримом |
 | Тесты LLM | `FakeLLM` | Детерминированные тесты без ключа, сети и затрат |
-| API | FastAPI + SSE | OpenAPI из коробки и стриминг ответа |
+| API | FastAPI + SSE события `sources/token/done/error` | Источники приходят до токенов, цитаты можно сопоставить с `[n]` |
 | UI | Streamlit поверх API | Быстрое демо без frontend-сборки |
+| Чат | Single-turn, история только в UI | Меньше scope; multi-turn можно добавить позже |
 | Оркестрация | Собственный код без LangChain | Прозрачный пайплайн и контроль над каждым этапом |
 | Инфраструктура | uv, Docker Compose, GitHub Actions | Воспроизводимость и автоматические проверки |

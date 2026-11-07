@@ -25,9 +25,10 @@ flowchart LR
     M --> O[FastAPI API]
 ```
 
-Схема показывает целевую архитектуру. На этапе 3 реализован путь до поиска:
-API отдаёт `/health`, `/ready`, `/api/stats` и `/api/search`, Streamlit показывает
-поиск и сравнение режимов. Reranking, генерация, SSE и чат — этап 4.
+Схема реализована на этапе 4: API отдаёт `/health`, `/ready`, `/api/stats`,
+`/api/search` и потоковый `/api/ask`, Streamlit показывает поиск, сравнение
+режимов и чат с цитатами. Reranker встроен в поиск, генерация идёт через
+OpenRouter/DeepSeek.
 
 ## Компоненты
 
@@ -35,9 +36,9 @@ API отдаёт `/health`, `/ready`, `/api/stats` и `/api/search`, Streamlit �
 - **Retrieval** — Qdrant с двумя named vectors: dense и sparse.
 - **Fusion** — RRF поверх dense- и BM25-кандидатов.
 - **Reranking** — cross-encoder для финального top-k.
-- **Generation** — ответ только по найденному контексту, с цитатами на разделы документации (этап 4).
-- **API** — FastAPI: `/health`, `/ready`, `/api/stats`, `/api/search`; SSE и `/api/ask` — этап 4.
-- **UI** — Streamlit: поиск и сравнение режимов; чат — этап 4.
+- **Generation** — ответ только по найденному контексту, с цитатами на разделы документации.
+- **API** — FastAPI: `/health`, `/ready`, `/api/stats`, `/api/search` и SSE `/api/ask`.
+- **UI** — Streamlit: поиск, сравнение режимов и чат с цитатами.
 
 ## Ingestion
 

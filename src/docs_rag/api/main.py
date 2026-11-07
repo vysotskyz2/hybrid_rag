@@ -13,12 +13,15 @@ from docs_rag.api.deps import AppServices
 from docs_rag.api.middleware import REQUEST_ID_HEADER, RequestContextMiddleware
 from docs_rag.api.routes import router
 from docs_rag.config import Settings, get_settings
+from docs_rag.generation.llm import build_llm
 from docs_rag.logging import configure_logging
 from docs_rag.retrieval.embeddings import (
     FastEmbedSparseEmbedder,
     SentenceTransformerDenseEmbedder,
 )
+from docs_rag.retrieval.reranker import build_reranker
 from docs_rag.retrieval.search import Retriever
+from docs_rag.retrieval.service import SearchService
 from docs_rag.retrieval.store import QdrantStore
 
 logger = structlog.get_logger(__name__)
@@ -46,10 +49,17 @@ def _build_services(settings: Settings) -> AppServices:
             sparse=sparse,
             candidates=settings.retrieval_candidates,
         )
+        reranker = build_reranker(settings)
+        search = SearchService(
+            retriever=retriever,
+            reranker=reranker,
+            candidates=settings.rerank_candidates,
+        )
+        llm = build_llm(settings)
     except Exception:
         store.close()
         raise
-    return AppServices(retriever=retriever, store=store)
+    return AppServices(search=search, store=store, llm=llm)
 
 
 @asynccontextmanager
@@ -63,18 +73,30 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             collection=settings.qdrant_collection,
             dense_model=settings.embedding_model,
             sparse_model=settings.sparse_model,
+            rerank_enabled=settings.rerank_enabled,
+            rerank_model=settings.rerank_model,
+            llm_mode=settings.llm_mode,
+            llm_model=settings.llm_model,
         )
         services = _build_services(settings)
         app.state.services = services
     else:
-        logger.info("api_startup", collection=services.store.collection, injected=True)
+        logger.info(
+            "api_startup",
+            collection=services.store.collection,
+            injected=True,
+            llm_available=services.llm.available,
+        )
 
     try:
         yield
     finally:
         logger.info("api_shutdown")
-        services.store.close()
-        app.state.services = None
+        try:
+            await services.llm.aclose()
+        finally:
+            services.store.close()
+            app.state.services = None
 
 
 def create_app(

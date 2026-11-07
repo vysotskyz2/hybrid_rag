@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from docs_rag.config import Settings
+from docs_rag.generation.llm import FakeLLM
 from docs_rag.retrieval.models import SearchFilters, SearchMode, SearchResult
 
 
@@ -30,9 +31,39 @@ class FakeStore:
         self.closed = True
 
 
+def make_search_result(
+    chunk_id: str = "chunk-1",
+    score: float = 0.9,
+    retrieval_score: float | None = 0.5,
+    path: str = "tutorial/dependencies.md",
+    title: str = "Dependencies",
+    heading_path: str = "Dependencies > Intro",
+    text: str = "Dependency injection text",
+    token_count: int = 10,
+) -> SearchResult:
+    return SearchResult(
+        chunk_id=chunk_id,
+        score=score,
+        path=path,
+        url=f"https://example.com/{path}",
+        title=title,
+        heading_path=heading_path,
+        section="tutorial",
+        content_type="prose",
+        language="en",
+        version="v1",
+        token_count=token_count,
+        text=text,
+        retrieval_score=retrieval_score,
+    )
+
+
 @dataclass
-class FakeRetriever:
-    calls: list[tuple[str, SearchMode, int, SearchFilters | None]] = field(default_factory=list)
+class FakeSearchService:
+    results: list[SearchResult] = field(default_factory=lambda: [make_search_result()])
+    calls: list[tuple[str, SearchMode, int, SearchFilters | None, bool]] = field(
+        default_factory=list
+    )
 
     def search(
         self,
@@ -40,35 +71,28 @@ class FakeRetriever:
         mode: SearchMode = "hybrid",
         top_k: int = 5,
         filters: SearchFilters | None = None,
+        rerank: bool = True,
     ) -> list[SearchResult]:
-        self.calls.append((query, mode, top_k, filters))
-        return [
-            SearchResult(
-                chunk_id="chunk-1",
-                score=0.9,
-                path="tutorial/dependencies.md",
-                url="https://example.com/tutorial/dependencies",
-                title="Dependencies",
-                heading_path="Dependencies > Intro",
-                section="tutorial",
-                content_type="prose",
-                language="en",
-                version="v1",
-                token_count=10,
-                text="Dependency injection text",
-            )
-        ]
+        self.calls.append((query, mode, top_k, filters, rerank))
+        return self.results[:top_k]
 
 
-class BrokenRetriever(FakeRetriever):
+class BrokenSearchService(FakeSearchService):
     def search(
         self,
         query: str,
         mode: SearchMode = "hybrid",
         top_k: int = 5,
         filters: SearchFilters | None = None,
+        rerank: bool = True,
     ) -> list[SearchResult]:
         raise RuntimeError("retrieval backend is down")
+
+
+class UnavailableLLM(FakeLLM):
+    @property
+    def available(self) -> bool:
+        return False
 
 
 def make_settings(**overrides: object) -> Settings:

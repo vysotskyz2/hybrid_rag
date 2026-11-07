@@ -4,11 +4,12 @@ from fastapi.testclient import TestClient
 from docs_rag.api.deps import AppServices
 from docs_rag.api.main import create_app
 from docs_rag.config import Settings
+from docs_rag.generation.llm import FakeLLM
 from docs_rag.retrieval.models import SearchFilters
-from tests.api.helpers import BrokenRetriever, FakeRetriever, FakeStore
+from tests.api.helpers import BrokenSearchService, FakeSearchService, FakeStore
 
 
-def test_search_defaults(client: TestClient, fake_retriever: FakeRetriever) -> None:
+def test_search_defaults(client: TestClient, fake_search: FakeSearchService) -> None:
     response = client.post("/api/search", json={"query": "Depends"})
 
     assert response.status_code == 200
@@ -16,15 +17,17 @@ def test_search_defaults(client: TestClient, fake_retriever: FakeRetriever) -> N
     assert body["query"] == "Depends"
     assert body["mode"] == "hybrid"
     assert body["top_k"] == 5
+    assert body["reranked"] is True
     assert body["results"][0]["chunk_id"] == "chunk-1"
+    assert body["results"][0]["retrieval_score"] == 0.5
     assert body["results"][0]["text"] == "Dependency injection text"
-    assert fake_retriever.calls == [("Depends", "hybrid", 5, SearchFilters())]
+    assert fake_search.calls == [("Depends", "hybrid", 5, SearchFilters(), True)]
 
 
 @pytest.mark.parametrize("mode", ["dense", "sparse", "hybrid"])
 def test_search_modes(
     client: TestClient,
-    fake_retriever: FakeRetriever,
+    fake_search: FakeSearchService,
     mode: str,
 ) -> None:
     response = client.post(
@@ -35,10 +38,10 @@ def test_search_modes(
     assert response.status_code == 200
     assert response.json()["mode"] == mode
     assert response.json()["top_k"] == 3
-    assert fake_retriever.calls[0][1] == mode
+    assert fake_search.calls[0][1] == mode
 
 
-def test_search_passes_filters(client: TestClient, fake_retriever: FakeRetriever) -> None:
+def test_search_passes_filters(client: TestClient, fake_search: FakeSearchService) -> None:
     response = client.post(
         "/api/search",
         json={
@@ -51,7 +54,7 @@ def test_search_passes_filters(client: TestClient, fake_retriever: FakeRetriever
     )
 
     assert response.status_code == 200
-    assert fake_retriever.calls[0][3] == SearchFilters(
+    assert fake_search.calls[0][3] == SearchFilters(
         section="tutorial",
         content_type="prose",
         language="en",
@@ -59,12 +62,12 @@ def test_search_passes_filters(client: TestClient, fake_retriever: FakeRetriever
     )
 
 
-def test_search_strips_query(client: TestClient, fake_retriever: FakeRetriever) -> None:
+def test_search_strips_query(client: TestClient, fake_search: FakeSearchService) -> None:
     response = client.post("/api/search", json={"query": "  Depends  "})
 
     assert response.status_code == 200
     assert response.json()["query"] == "Depends"
-    assert fake_retriever.calls[0][0] == "Depends"
+    assert fake_search.calls[0][0] == "Depends"
 
 
 @pytest.mark.parametrize("query", ["", "   "])
@@ -103,7 +106,11 @@ def test_search_rejects_too_large_top_k(client: TestClient) -> None:
 def test_search_returns_503_on_backend_failure(settings: Settings) -> None:
     app = create_app(
         settings,
-        AppServices(retriever=BrokenRetriever(), store=FakeStore()),
+        AppServices(
+            search=BrokenSearchService(),
+            store=FakeStore(),
+            llm=FakeLLM(),
+        ),
     )
 
     with TestClient(app) as client:
