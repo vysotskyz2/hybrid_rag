@@ -7,9 +7,11 @@ OpenAPI — по `/openapi.json`.
 uv run uvicorn docs_rag.api.main:app --reload
 ```
 
-Модели и `QdrantStore` загружаются один раз в lifespan. При импорте приложения
-модели не скачиваются. Sync-`Retriever` вызывается через `run_in_threadpool`,
-поэтому event loop не блокируется.
+Dense/sparse embedders, reranker и `QdrantStore` загружаются один раз в lifespan.
+При импорте приложения модели не скачиваются. Sync-retrieval и rerank вызываются
+через `run_in_threadpool`, поэтому event loop не блокируется. LLM-клиент создаётся
+в lifespan; при `LLM_MODE=openrouter` без ключа `/api/search` работает,
+а `/api/ask` возвращает `503`.
 
 ## Endpoints
 
@@ -19,6 +21,7 @@ uv run uvicorn docs_rag.api.main:app --reload
 | `GET` | `/ready` | Qdrant доступен, коллекция существует, `points > 0` |
 | `GET` | `/api/stats` | Коллекция, points, версия корпуса, имена векторов |
 | `POST` | `/api/search` | Поиск по индексу |
+| `POST` | `/api/ask` | SSE-ответ LLM с цитатами и источниками |
 
 Все ответы содержат заголовок `X-Request-ID`. Если клиент передал его в запросе,
 значение возвращается без изменений; иначе генерируется UUID.
@@ -100,10 +103,12 @@ Invoke-RestMethod http://127.0.0.1:8000/api/search `
   "query": "How do I use Depends?",
   "mode": "hybrid",
   "top_k": 3,
+  "reranked": true,
   "results": [
     {
       "chunk_id": "c0a8017e-...",
-      "score": 0.6667,
+      "score": 0.9123,
+      "retrieval_score": 0.6667,
       "path": "tutorial/dependencies/index.md",
       "url": "https://fastapi.tiangolo.com/tutorial/dependencies/",
       "title": "Dependencies",
@@ -119,8 +124,57 @@ Invoke-RestMethod http://127.0.0.1:8000/api/search `
 }
 ```
 
-`results` отсортированы по убыванию score. Для `hybrid` score — результат RRF,
-поэтому его нельзя напрямую сравнивать со score dense или sparse.
+`results` отсортированы по убыванию score. При включённом reranker `score` —
+выход cross-encoder, а `retrieval_score` — исходный score retrieval (для hybrid
+это RRF). Если reranker выключен, `reranked=false`, `score` — retrieval score,
+а `retrieval_score` равен `null`.
+
+## POST /api/ask
+
+Тело запроса такое же, как у `/api/search`: `query`, `mode`, `top_k`,
+`section`, `content_type`, `language`, `version`.
+
+Перед открытием стрима выполняется retrieval + rerank. Если LLM не настроен,
+возвращается обычный `503`. Если ошибка LLM возникает уже во время стрима,
+клиент получает SSE-событие `error`.
+
+Ответ — `text/event-stream`:
+
+```text
+event: sources
+data: {"sources":[{"index":1,"chunk_id":"...","title":"Dependencies","heading_path":"...","url":"...","score":0.91,"retrieval_score":0.67,"text":"..."}]}
+
+event: token
+data: {"text":"Используйте "}
+
+event: token
+data: {"text":"`Depends` [1]."}
+
+event: done
+data: {"model":"deepseek/deepseek-chat","sources":1,"reranked":true,"duration_ms":842.1}
+```
+
+| Событие | Назначение |
+|---|---|
+| `sources` | Пронумерованные источники; номера совпадают с `[n]` в ответе |
+| `token` | Очередная порция текста ответа |
+| `done` | Модель, число источников, флаг reranker и полное время |
+| `error` | Ошибка LLM после начала стрима |
+
+Пример:
+
+```powershell
+$ask = '{"query":"How do I use Depends?","top_k":3}'
+curl.exe -N -X POST http://127.0.0.1:8000/api/ask `
+    -H "Content-Type: application/json" -d $ask
+```
+
+Если после фильтров не найдено ни одного источника, LLM не вызывается:
+`sources` пустой, приходит фиксированное сообщение об отсутствии ответа и `done`.
+
+Для `LLM_MODE=openrouter` нужен `LLM_API_KEY`. Без ключа `/api/search` продолжает
+работать, а `/api/ask` возвращает `503`. Для локальной проверки без затрат
+используйте `LLM_MODE=fake`.
 
 ## Ошибки
 
@@ -128,7 +182,7 @@ Invoke-RestMethod http://127.0.0.1:8000/api/search `
 |---|---|
 | `400` | `query` длиннее `QUERY_MAX_LENGTH`, `top_k > SEARCH_MAX_TOP_K`, ошибка валидации retriever |
 | `422` | Пустой `query`, невалидный `mode`/`content_type`, `top_k < 1`, неверный JSON |
-| `503` | Qdrant/индекс недоступен, `/ready` не готов, ошибка backend |
+| `503` | Qdrant/индекс недоступен, `/ready` не готов, ошибка backend, LLM не настроен |
 
 Тело ошибки:
 

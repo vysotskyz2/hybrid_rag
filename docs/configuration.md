@@ -102,8 +102,13 @@ stdlib `tomllib`. CLI-флаги переопределяют значения T
 | `RETRIEVAL_CANDIDATES` | `30` | Кандидатов на ветку для RRF |
 | `RETRIEVAL_TOP_K` | `5` | Результатов по умолчанию |
 | `RETRIEVAL_DEFAULT_MODE` | `hybrid` | `dense`, `sparse`, `hybrid` |
-| `RERANK_ENABLED` | `true` | Задел на этап 4 |
-| `RERANK_MODEL` | `BAAI/bge-reranker-v2-m3` | Задел на этап 4 |
+| `RERANK_ENABLED` | `true` | Включить cross-encoder reranking |
+| `RERANK_MODEL` | `BAAI/bge-reranker-v2-m3` | Модель reranker |
+| `RERANK_CANDIDATES` | `10` | Пул кандидатов до rerank |
+| `RERANK_BATCH_SIZE` | `8` | Батч inference reranker |
+| `RERANK_MAX_LENGTH` | `512` | Максимальная длина пары query/document |
+
+Reranker использует `EMBEDDING_DEVICE`. Первая загрузка модели занимает ~2.1 GiB.
 
 ### LLM
 
@@ -113,8 +118,13 @@ stdlib `tomllib`. CLI-флаги переопределяют значения T
 | `LLM_BASE_URL` | OpenRouter URL | OpenAI-compatible endpoint |
 | `LLM_API_KEY` | пусто | Ключ OpenRouter |
 | `LLM_MODEL` | `deepseek/deepseek-chat` | ID модели |
+| `LLM_TEMPERATURE` | `0.2` | Temperature генерации |
+| `LLM_MAX_TOKENS` | `800` | Максимум токенов ответа |
+| `LLM_CONTEXT_MAX_TOKENS` | `4000` | Бюджет контекста из источников |
+| `LLM_TIMEOUT` | `120` | Таймаут LLM-запроса, секунды |
 
-LLM пока не используется; генерация ответов появится на этапе 4.
+При `LLM_MODE=openrouter` без `LLM_API_KEY` поиск работает, а `/api/ask` возвращает
+`503`. `LLM_MODE=fake` не требует сети и ключа.
 
 ### API и UI
 

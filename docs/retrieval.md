@@ -65,12 +65,26 @@ uv run docs-rag index --recreate
 Для `hybrid` каждый retriever отдаёт до `RETRIEVAL_CANDIDATES` кандидатов (по умолчанию 30),
 Qdrant объединяет их через RRF.
 
+## Reranking
+
+При включённом `RERANK_ENABLED` `SearchService` сначала забирает
+`max(top_k, RERANK_CANDIDATES)` результатов, затем cross-encoder
+`BAAI/bge-reranker-v2-m3` переупорядочивает их и оставляет `top_k`.
+
+- `score` — выход reranker;
+- `retrieval_score` — исходный score retrieval (RRF для hybrid);
+- без reranker `retrieval_score=null`, `score` остаётся retrieval score.
+
+Reranker использует `EMBEDDING_DEVICE`, `RERANK_BATCH_SIZE` и
+`RERANK_MAX_LENGTH`. Модель занимает ~2.1 GiB и заметно увеличивает cold start.
+
 ## CLI
 
 ```powershell
 uv run docs-rag search --query "How do I use Depends?" --mode hybrid --top-k 5
 uv run docs-rag search --query "Как работает внедрение зависимостей?" --mode hybrid
 uv run docs-rag search --query "HTTPException" --mode sparse --top-k 3
+uv run docs-rag search --query "Depends" --mode hybrid --no-rerank
 ```
 
 Фильтры:
@@ -90,23 +104,25 @@ uv run docs-rag search \
 
 - RU-вопрос «Как работает внедрение зависимостей?» находит `tutorial/dependencies/index.md`
   через dense-ветку.
-- Запрос `HTTPException` даёт релевантные чанки через BM25, но первым может идти раздел
-  с более высокой частотой термина. Это задача reranker'а на этапе 4.
+- Запрос `HTTPException` даёт релевантные чанки через BM25; reranker поднимает
+  более осмысленные разделы, но веса и число кандидатов ещё не тюнингованы.
 - Запрос про CORS попадает в `tutorial/cors.md` в top-5, хотя middleware-разделы
-  стоят выше. Reranker и тюнинг RRF должны улучшить порядок.
-- После загрузки моделей поиск занимает десятки миллисекунд; основная задержка —
-  cold start модели.
+  стоят выше. Тюнинг RRF и reranker — задача этапа evaluation.
+- После загрузки моделей retrieval занимает десятки миллисекунд; cold start и
+  reranker на CPU — основные источники задержки. На текущей машине rerank
+  10 кандидатов занимает примерно 6–7 секунд.
 
 ## Тесты
 
 - Unit-тесты retrieval используют in-memory Qdrant и fake embedders, поэтому не требуют
   скачивания моделей.
-- Реальный e5 + BM25 проверяются интеграционным тестом с `RUN_INTEGRATION=1`.
+- Reranker в тестах подменяется fake ranker; реальная модель проверяется вручную
+  и через integration-тесты с `RUN_INTEGRATION=1`.
 - Полный индекс проверяется вручную командами `index` и `search`.
 
 ## Ограничения
 
-- Reranker ещё не подключён.
-- Веса RRF не тюнингованы; по умолчанию равные.
+- Веса RRF и параметры reranker не тюнингованы; по умолчанию равные.
 - Нет кэша запросов и батчевого поиска.
-- HTTP API и Streamlit добавлены на этапе 3; reranker, генерация и чат — этап 4.
+- Reranker на CPU добавляет секунды latency.
+- HTTP API, Streamlit и генерация добавлены на этапах 3–4.

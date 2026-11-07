@@ -42,16 +42,30 @@ class SearchResultSchema(BaseModel):
     version: str
     token_count: int
     text: str
+    retrieval_score: float | None = None
 
     @classmethod
     def from_result(cls, result: SearchResult) -> SearchResultSchema:
         return cls.model_validate(result)
 
 
+class SourceSchema(SearchResultSchema):
+    index: int
+
+    @classmethod
+    def from_source(cls, result: SearchResult, index: int) -> SourceSchema:
+        return cls(index=index, **SearchResultSchema.from_result(result).model_dump())
+
+
+class AskRequest(SearchRequest):
+    pass
+
+
 class SearchResponse(BaseModel):
     query: str
     mode: SearchMode
     top_k: int
+    reranked: bool = False
     results: list[SearchResultSchema]
 
 

@@ -16,7 +16,9 @@ from docs_rag.retrieval.embeddings import (
 )
 from docs_rag.retrieval.indexer import build_index, load_chunks
 from docs_rag.retrieval.models import SearchFilters
+from docs_rag.retrieval.reranker import build_reranker
 from docs_rag.retrieval.search import Retriever
+from docs_rag.retrieval.service import SearchService
 from docs_rag.retrieval.store import QdrantStore
 
 
@@ -89,6 +91,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     search_parser.add_argument("--top-k", type=int, default=None)
     search_parser.add_argument("--candidates", type=int, default=None)
+    search_parser.add_argument(
+        "--no-rerank",
+        action="store_true",
+        help="Disable cross-encoder reranking",
+    )
     search_parser.add_argument("--section", default=None)
     search_parser.add_argument(
         "--content-type",
@@ -280,7 +287,13 @@ def _cmd_search(args: argparse.Namespace, settings: Settings) -> None:
                 args.candidates if args.candidates is not None else settings.retrieval_candidates
             ),
         )
-        results = retriever.search(
+        reranker = None if args.no_rerank else build_reranker(settings)
+        search = SearchService(
+            retriever=retriever,
+            reranker=reranker,
+            candidates=settings.rerank_candidates,
+        )
+        results = search.search(
             query=args.query,
             mode=args.mode or settings.retrieval_default_mode,
             top_k=(args.top_k if args.top_k is not None else settings.retrieval_top_k),
@@ -290,6 +303,7 @@ def _cmd_search(args: argparse.Namespace, settings: Settings) -> None:
                 language=args.language,
                 version=args.version,
             ),
+            rerank=not args.no_rerank,
         )
         print(
             json.dumps(

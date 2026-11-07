@@ -2,7 +2,7 @@
 
 Гибридный RAG-ассистент по документации FastAPI: BM25 + dense retrieval + cross-encoder reranker.
 
-> Текущий статус: **этап 3 — API и UI**. Корпус собран, проиндексирован в Qdrant, работают dense, sparse и hybrid поиск через CLI, HTTP API и Streamlit. Reranker, генерация ответов и чат появятся в следующих ветках.
+> Текущий статус: **этап 4 — reranker и генерация**. Корпус собран, проиндексирован в Qdrant, работают dense, sparse и hybrid поиск, cross-encoder reranking, ответы DeepSeek с цитатами через `/api/ask` SSE и чат в Streamlit. Evaluation — следующий этап.
 
 ## Идея
 
@@ -36,6 +36,15 @@ uv run ruff format --check .
 uv run mypy src
 ```
 
+Для ответов LLM добавь в `.env` ключ OpenRouter:
+
+```dotenv
+LLM_API_KEY=sk-or-...
+```
+
+Без ключа можно использовать `LLM_MODE=fake` для локальной проверки чата.
+Поиск и API работают и без ключа.
+
 Поднять Qdrant и собрать индекс:
 
 ```powershell
@@ -50,6 +59,7 @@ uv run docs-rag index --recreate
 uv run docs-rag search --query "How do I use Depends?" --mode hybrid --top-k 5
 uv run docs-rag search --query "Как работает внедрение зависимостей?" --mode hybrid
 uv run docs-rag search --query "HTTPException" --mode sparse --top-k 3
+uv run docs-rag search --query "Depends" --mode hybrid --no-rerank
 ```
 
 Запустить API:
@@ -58,6 +68,7 @@ uv run docs-rag search --query "HTTPException" --mode sparse --top-k 3
 uv run uvicorn docs_rag.api.main:app --reload
 ```
 
+Первый запуск скачивает reranker `BAAI/bge-reranker-v2-m3` (~2.1 GiB).
 Swagger: http://127.0.0.1:8000/docs
 
 Примеры запросов:
@@ -76,6 +87,16 @@ $body = @{
 Invoke-RestMethod http://127.0.0.1:8000/api/search `
     -Method Post -ContentType "application/json" -Body $body
 ```
+
+Потоковый ответ с цитатами:
+
+```powershell
+$ask = '{"query":"How do I use Depends?","top_k":3}'
+curl.exe -N -X POST http://127.0.0.1:8000/api/ask `
+    -H "Content-Type: application/json" -d $ask
+```
+
+`/api/ask` отдаёт SSE-события `sources`, `token`, `done` и `error`.
 
 Запустить UI:
 
@@ -174,12 +195,15 @@ uv run docs-rag search --query "Depends" --mode hybrid --section tutorial --cont
 | `GET` | `/ready` | Готовность Qdrant и индекса; `503`, пока points = 0 |
 | `GET` | `/api/stats` | Коллекция, число points, версия корпуса, имена векторов |
 | `POST` | `/api/search` | Поиск: `dense`, `sparse` или `hybrid` + фильтры |
+| `POST` | `/api/ask` | SSE-ответ LLM с цитатами и источниками |
 
-`/api/search` принимает `query`, `mode`, `top_k`, `section`, `content_type`,
-`language`, `version`. Модели загружаются один раз в lifespan; поиск выполняется
-в threadpool. Каждый ответ содержит заголовок `X-Request-ID`.
+`/api/search` и `/api/ask` принимают `query`, `mode`, `top_k`, `section`,
+`content_type`, `language`, `version`. Модели и reranker загружаются один раз
+в lifespan; retrieval и rerank выполняются в threadpool. Каждый ответ содержит
+заголовок `X-Request-ID`.
 
 Подробные схемы и примеры: [`docs/api.md`](docs/api.md).
+Reranker, prompt и цитаты: [`docs/generation.md`](docs/generation.md).
 
 ## UI
 
@@ -187,22 +211,27 @@ Streamlit ходит в API по HTTP и не импортирует retrieval-�
 
 - вкладка «Поиск» — запрос, режим, top-k и фильтры;
 - вкладка «Сравнение» — dense / sparse / hybrid side-by-side;
+- вкладка «Чат» — потоковый ответ с цитатами и источниками;
 - sidebar проверяет `/ready` и показывает число points.
+
+Чат single-turn: каждый вопрос обрабатывается независимо, история хранится
+только в текущей сессии UI.
 
 ## Структура
 
 ```text
 config/ingestion.toml  # корпус, фильтры, чанкинг
 src/docs_rag/
-├── api/          # FastAPI: routes, schemas, deps, middleware
+├── api/          # FastAPI: routes, schemas, deps, middleware, SSE
+├── generation/   # LLM-клиенты, prompt, цитаты
 ├── ingestion/    # fetch, parse, includes, chunk, pipeline
-├── retrieval/    # embeddings, Qdrant store, indexer, search
+├── retrieval/    # embeddings, Qdrant store, indexer, reranker, search
 ├── config.py     # runtime-настройки из .env
 ├── logging.py    # structlog
 └── cli.py        # CLI-точка входа
-ui/app.py         # Streamlit: поиск и сравнение режимов
-tests/            # unit-, retrieval- и API-тесты
-docs/             # архитектура, ingestion, retrieval, API, конфигурация
+ui/app.py         # Streamlit: поиск, сравнение и чат
+tests/            # unit-, retrieval-, generation- и API-тесты
+docs/             # архитектура, ingestion, retrieval, generation, API, конфигурация
 ```
 
 ## План этапов
@@ -212,15 +241,18 @@ docs/             # архитектура, ingestion, retrieval, API, конф�
 | 0 | `chore/stage-0-bootstrap` | смержен |
 | 1 | `feat/stage-1-ingestion` | смержен |
 | 2 | `feat/stage-2-retrieval` | смержен |
-| 3 | `feat/stage-3-api-ui` | текущий: API и Streamlit |
-| 4 | `feat/stage-4-generation-rerank` | reranker, DeepSeek, цитаты, SSE, чат |
+| 3 | `feat/stage-3-api-ui` | смержен |
+| 4 | `feat/stage-4-generation-rerank` | текущий: reranker, DeepSeek, цитаты, SSE, чат |
 | 5 | `feat/stage-5-evaluation` | датасет и метрики качества |
 | 6 | `chore/stage-6-polish` | Docker UI, HF cache, CI с Qdrant, README, демо |
 
-## Ограничения этапа 3
+## Ограничения этапа 4
 
-- Нет reranker: hybrid использует RRF с равными весами.
-- Нет генерации ответов, цитат, SSE и чата — это этап 4.
+- Чат single-turn: история не передаётся в LLM как контекст диалога.
+- Нет retry/fallback для LLM, чтобы не дублировать оплату запросов.
+- Reranker `BAAI/bge-reranker-v2-m3` занимает ~2.1 GiB и работает на CPU;
+  первый запуск и холодный старт заметно дольше, чем на этапе 3.
+- Docker HF cache и healthcheck start-period не настроены — это этап 6.
 - UI запускается локально через `streamlit run`; в Docker Compose его пока нет.
 - Для русского запроса BM25-ветка обычно пустая, работает dense; гибрид корректно падает в dense-only.
 - Размер чанка считается приблизительно; точный tokenizer embedding-модели пока не подключён.
